@@ -1,4 +1,5 @@
 # Box-Splines
+----
 
 ## Introduction
 This is the companion code repository to the paper "Fast and exact evaluation
@@ -28,12 +29,12 @@ direction vectors:
 bs = BoxSpline([(1,0),(0,1),(1,1)])
 ```
 By default this is shifted to the origin, you can turn this off by setting
-the second argument to ```False```
+the second argument to ```False```:
 
 ```python
 bs = BoxSpline([(1,0),(0,1),(1,1)], False)
 ```
-The third and fourth arguments shift and re-weight the spline (respectively).
+The third and fourth arguments shift and re-weight the spline (respectively):
 
 ```python
 bs = BoxSpline([(1,0),(0,1),(1,1)], False, vector([-1,-1]), 2)
@@ -43,7 +44,7 @@ Note the use of ``stable_eval`` in the above example, this does not use the
 fastest evaluation scheme (it uses a binary search not discussed in the paper).
 To create a fast tree evaluation scheme, use the ```PolyTree``` object.
 ```python
-pt = PolyTree(bs)
+pt = PolyTree(bs) # This may take a while...
 pt.eval((0,0))
 ```
 Once a ```PolyTree``` object has been created, you can dump the resulting C code
