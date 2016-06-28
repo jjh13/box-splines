@@ -1,5 +1,4 @@
 # Box-Splines
-----
 
 ## Introduction
 This is the companion code repository to the paper "Fast and exact evaluation
