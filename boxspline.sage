@@ -1,21 +1,62 @@
 #!/usr/bin/env python
 """
+boxspline.sage
+
+This is the bread & butter of the paper "Fast and exact evaluation of box
+splines via the PP-form". It's where the actual set decomposition code is,
+conveniently supplied in a ``nice'' BoxSpline class. See the README for
+a few quick examples on how to use this class.
+
+Copyright © 2016 Joshua Horacsek
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
+
+__author__ = "Joshua Horacsek"
 
 from sage.all import *
 from itertools import product, combinations, chain, izip_longest
 from operator import mul
+import logging, sys
 
 load("./helpers.sage")
 
-
-def grouper(n, iterable, fillvalue=None):
-    args = [iter(iterable)] * n
-    return izip_longest(*args, fillvalue=fillvalue)
-
 class BoxSpline:
     def __init__(self, Xi, centered=True, shift = None, weight=1):
+        """
+        Sets the default parameters for a box spline.
 
+        Arguments:
+        Xi -- A list of direction tuples that form the direction matrix, for
+        example:
+            Xi = [(1,0),(0,1),(1,1)] # Courant Element
+            Xi = [(1,0),(0,1)]*4 # Cubic 2d-tensor product b-spline
+            Xi = [(1,)]*4 #  1d-tensor cubic b-spline
+            Xi = [(-1,1,1),(1,-1,1),(1,1,-1),(-1,-1,-1)] # BCC Linear spline
+        centered -- True or False, automatically shift the box spline so that
+            its center is at the origin.
+
+        shift -- A vector by which to shift the spline, example: vector([-1,-1])
+
+        weight -- This scales the internal polynomials so that the output values
+            are scaled by this factor.
+
+        """
         # Get simple parameters for the box spline
         self.s_ = len(Xi[0])
         self.n_ = len(Xi)
@@ -46,27 +87,34 @@ class BoxSpline:
         self.gt_cache = None
 
     def warmup(self):
-        print "Warming up difference op"
-        _ = self.get_differece_operator()
-        print "Warming up polyhedron"
+        """
+        Builds the internal caches for many of the operations used internally.
+        """
+        _ = self.get_difference_operator()
         _ = self.get_polyhedron()
-        print "Heating the greens function"
         _ = self.decompose_greens()
-        print "Grouping planes"
-        _ = self.get_grouped_planes_for_eval()
-        print "Grouping polyterms"
+        _ = self._get_grouped_planes_for_eval()
         _ = self.get_polyterms_w_xform()
 
-    def uses_scale(self):
-        return False
-
     def cleanup(self):
+        """
+        Forcibly delete the caches. Note that this doesn't reclaim memory, since
+        most of our computations are via sage varaibles, which consistently
+        leak memory : /. This IS useful if you're monkey patching or poking
+        about in the internals of the class, and want to invalidate the cached
+        objects.
+        """
         del self.greens_cache
         del self.differ_cache
         del self.polytope_cache
         del self.cached_regions
 
     def get_fourier_form(self):
+        """
+        Returns the Fourier form of the box spline. This is a function of the
+        variables w_0, w_1, ... w_n. Where n is the dimension of the input
+        space.
+        """
         w = vector([var('w_%d' % i) for i in xrange(self.s_)])
         phi = prod([
                     (1 - exp(-I* w.dot_product(vector(xi))))/(I*w.dot_product(vector(xi)))
@@ -76,6 +124,18 @@ class BoxSpline:
         return ret
 
     def get_centered_fourier(self, use_sinc=False):
+        """
+        Returns the Fourier form of the box spline. This is a function of the
+        variables w_0, w_1, ... w_n. Where n is the dimension of the input
+        space.
+
+        This form is automatically centered.
+
+        Arguments:
+            use_sinc -- forces the spline to use the symbolic sinc function
+                which is not part of sage. This is nice if you want to
+                numerically evaluate these functions.
+        """
         w = vector([var('w_%d' % i) for i in xrange(self.s_)])
         if use_sinc:
             phi = prod([
@@ -88,19 +148,26 @@ class BoxSpline:
                         for xi in self.Xi_
             ])* self.weight
         return phi
+
     def get_polyhedron(self):
         """
         Returns a Polyhedron object that represents the support for this
-        box-spline.
+        box spline.
         """
         if self.polyhedron_cache:
             return self.polyhedron_cache
 
-        diff = self.get_differece_operator()
+        diff = self.get_difference_operator()
         self.polyhedron_cache = Polyhedron(vertices=list(set([tuple(v) for v,_ in diff])))
         return self.polyhedron_cache
 
-    def get_differece_operator(self):
+    def get_difference_operator(self):
+        """
+        Returns a liat of tuples of the form (lattice_site, weight) that
+        specify the difference operator.
+
+        This is mainly to be used internally by the class.
+        """
         if self.differ_cache:
             return self.differ_cache
 
@@ -122,9 +189,12 @@ class BoxSpline:
         self.differ_cache = [(vector(k)-self.c_xi, D[k]) for k in D if D[k] != 0]
         return self.differ_cache
 
-
-
     def simplify_and_split_from_ker(self, v, isolate, gfunc):
+        """
+        This is basically equivalent to the r vector function in the paper.
+
+        This is mainly to be used internally by the class.
+        """
         # A term in the greens function (fourier) can be represented as
         # (coeffecient, [deg(w_1), ..., deg(w_n)])
 
@@ -151,21 +221,33 @@ class BoxSpline:
         return new_terms
 
     def search_nullspace(self, zeros):
+        """
+        Constructs the \\nu vector as in the paper.
+
+        This is mainly to be used internally by the class.
+        """
         K = matrix(self.kerXi_).transpose()
         N = []
-        if sum(zeros) == 0:
-            print "Danger case!"
-            return vector(self.kerXi_[0])
+
         for i,_ in filter(lambda (i,z): z != 0, enumerate(zeros)):
             N.append(K[i])
+
         C = matrix(N).transpose().kernel().basis()[:]
         lc = vector(C[0])
         return matrix(self.kerXi_).transpose() * lc
 
     def decompose_term(self, gfd):
+        """
+        This is the actual recursive form for S, in the paper. It calls the
+        two helper methods ``search_nullspace'', and
+        ``simplify_and_split_from_ker'', that constuct \\nu and simplify the
+        terms in S.
+
+        This is mainly to be used internally by the class.
+        """
         (coeff, w) = gfd
         if len(filter(lambda x: x != 0, w)) == self.s_:
-            return (gfd)
+            return [(gfd)]
 
         # These are the terms that MUST be zero
         constraint = map(lambda x: 1 if x == 0 else 0, w)
@@ -176,16 +258,22 @@ class BoxSpline:
 
         decomposition = []
         for term in  self.simplify_and_split_from_ker(simp, sterm, gfd):
-            decomposition += (self.decompose_term(term))
+            decomposition += self.decompose_term(term)
 
+        # Collect like terms
+        compacted = {}
+        for v,k in decomposition:
+            k = tuple(k)
+            compacted[k] = v if k not in compacted else (v + compacted[k])
 
-        return decomposition
-
-    def symbolic_expr(self, gfd):
-        (coeff, w) = gfd
-        return coeff * prod([1/w_[i]**exp for i,exp in enumerate(w)], 1)
+        return [(compacted[k], list(k)) for k in compacted]
 
     def decompose_greens(self):
+        """
+        Decompose the actual greens function into sepeable terms, this Returns
+        a list of (w_vars, coeffecient) such that w_vars is a vector with
+        s non-zero terms.
+        """
         if self.greens_cache:
             return self.greens_cache
 
@@ -206,8 +294,6 @@ class BoxSpline:
                 i = xi_index[xi]
                 nu_alpha[i] += 1
                 nu_alpha[j] -= 1
-
-        print nu_alpha
 
         gf = (self.weight, nu_alpha)
 
@@ -230,44 +316,28 @@ class BoxSpline:
         final = []
         for term in  self.simplify_and_split_from_ker(simp, term, gf):
             final += self.decompose_term(term)
-        greens = zip(final[::2], final[1::2])
 
+        # Do one more pass collecting like terms
         compacted = {}
-        for v,k in greens:
+        for v,k in final:
             k = tuple(k)
             compacted[k] = v if k not in compacted else (v + compacted[k])
 
         self.greens_cache = [(compacted[k], list(k)) for k in compacted]
         return self.greens_cache
 
-    def decompose_greens_2(self):
-        gf = (self.weight, [1] * self.n_)
-
-        if self.n_ == self.s_:
-            return [gf]
-
-        # pick any vector from the kernel to simplify about
-        simp = self.kerXi_[0]
-
-        # pick a non zero term in that vector
-        term = filter(lambda (i,v): v != 0, enumerate(simp))[0][0]
-        terms = self.simplify_and_split_from_ker(simp, term, gf)
-
-        compacted = {}
-        for v, k in terms:
-            k = tuple(k)
-            compacted[k] = v if k not in compacted else (v + compacted[k])
-
-        new_compacted = {}
-        for k in compacted:
-            pass
-
-        done = True
-        while not done:
-            compacted_prime
-        return terms
 
     def calc_knotplanes(self):
+        """
+        Calculates the knot planes that touch the support of the box spline.
+
+        Returns two lists, the first is a list of planes that intersect the open
+           set of the support of the spline (i.e, only the internal planes), and
+           the second list is the planes that touch only the exterior of the
+           spline.
+
+           These lists have elements of the form (d,n) where n.dot(x,y,z) -d = 0
+        """
         # Calculate the set of knot planes at the origin
         if self.s_ == 1:
             H = list(set(self.Xi_))
@@ -302,6 +372,12 @@ class BoxSpline:
         return Hprime, Hshell
 
     def _group_planes(self, planes):
+        """
+        Groups planes by normal. Takes in a list of (d,n), and returns a list
+        of (n, [d_1, d_2, ...]).
+
+        Private method.
+        """
         plane_set = {}
 
         for d, n in planes:
@@ -323,12 +399,16 @@ class BoxSpline:
         return  list([(n,plane_set[n]) for n in plane_set])
 
     def _recursive_split(self, L, P, depth = 0):
+        """
+        Recursively split P by the planes in L.
+
+        Private method.
+        """
+
         if depth == 0:
             self.pp_num = 0
 
         if len(L) == 0:
-            if self.pp_num:
-                print "hit depth %d: %d" % (depth, self.pp_num)
             self.pp_num += 1
             return [P]
 
@@ -358,7 +438,12 @@ class BoxSpline:
 
         return result
 
-    def get_grouped_planes_for_eval(self):
+    def _get_grouped_planes_for_eval(self):
+        """
+        Groups all the planes that touch the support of the spline.
+
+        Private method.
+        """
         if self.gt_cache:
             return self.gt_cache
 
@@ -370,37 +455,26 @@ class BoxSpline:
 
 
     def get_regions(self):
-        print "Getting differnce operator"
-        differential = self.get_differece_operator()
-        print "Got differential"
+        """
+        Returns a list of all Polyhedron objects that correspond to the distinct
+        regions of evaulation for this box spline.
+        """
+
+        differential = self.get_difference_operator()
         Hprime, _ = self.calc_knotplanes()
-        print "Got knot planes"
-
         L = self._group_planes(set([(d, tuple(a)) for (d,a) in Hprime]))
-        print "grouped planes"
-
         poly = Polyhedron(vertices = map(lambda (x,y): list(x), differential))
-        print "about to split"
         return self._recursive_split(L, poly)
 
-    def transform_term(self, term):
-        (coeffecient, w) = term
-        v = [var('v_%d' % i) for i in xrange(self.s_)]
-        def make_term(i, k):
-            if i == 2:
-                return -H(-v[i])*v[i]**(k-1)/factorial(k-1)
-            return H(v[i])*v[i]**(k-1)/factorial(k-1)
-
-        itr = filter(lambda (s,m): m !=0, enumerate(w))
-        xi_sigma1 = matrix([self.Xi_[i] for i,_ in itr]).transpose().inverse()
-        transform = coeffecient * prod([make_term(i,m) for i,(s,m) in enumerate(itr)], 1)*abs(xi_sigma1.det())
-
-        subs = xi_sigma1 * vector(self.x_)
-        for idx, (sigma, mu) in enumerate(itr):
-            transform = transform.substitute(v[idx] == subs[idx])
-        return transform
 
     def poly_term(self, term):
+        """
+        Returns a ``polyterm'' for a given element of the set S. That is, when
+        we have a separable term from the greens frunction, this gives the
+        truncated form of that polynomial.
+
+        i.e. it returns a tuple of (polynomial, heaviside expression)
+        """
         (coeffecient, w) = term
         v = [var('v_%d' % i) for i in xrange(self.s_)]
         def make_term(i, k):
@@ -421,6 +495,14 @@ class BoxSpline:
         return (transform,heavy)
 
     def poly_term_w_xi(self, term):
+        """
+        Returns a ``polyterm'' for a given element of the set S. That is, when
+        we have a separable term from the greens frunction, this gives the
+        truncated form of that polynomial.
+
+        i.e. it returns a tuple of (polynomial, heaviside expression, Xi)
+        where Xi is the transform for the heaviside expression.
+        """
         (coeffecient, w) = term
         v = [var('v_%d' % i) for i in xrange(self.s_)]
         def make_term(i, k):
@@ -438,71 +520,74 @@ class BoxSpline:
         for idx, (sigma, mu) in enumerate(itr):
             transform = transform.substitute(v[idx] == subs[idx])
             heavy = heavy.substitute(v[idx] == subs[idx])
-        return (transform, heavy, matrix(xi_sigma1, RDF))
-
-    def get_poly(self):
-        M = 0
-        differential = self.get_differece_operator()
-        sgreens = self.decompose_greens()
-        sgreens = sum([self.transform_term(t) for t in sgreens])
-
-        for pos, val in differential:
-            GT = sgreens
-            for i,_ in enumerate(pos):
-                GT = GT.substitute(self.x_[i] == self.x_[i] - pos[i])
-            M += GT * val
-        M = M.expand()
-        return M
+        return (transform, heavy, matrix(RDF, xi_sigma1))
 
     def get_polyterms(self):
+        """
+        Returns the polyterms for each element in the decomposed greens set.
+        See ``poly_term_w_xi''. This is basically a list of polynomials,
+        heaviside function products, and transforms to a local space for the
+        truncated polynomial.
+        """
         if self.polyterm_cache:
             return self.polyterm_cache
-        print "decomposing greens"
         greens = self.decompose_greens()
-        print "getting polyterms"
         self.polyterm_cache = []
         for (pp,hs) in [self.poly_term(t) for t in greens]:
             self.polyterm_cache += [(pp.full_simplify(), hs)]
 
-        print "ok, got polyterms"
         return self.polyterm_cache
 
     def get_polyterms_w_xform(self):
+        """
+        Returns the polyterms for each element in the decomposed greens set.
+        See ``poly_term''. This is basically a list of polynomials and heaviside
+        function products.
+        """
         if self.polytermx_cache:
             return self.polytermx_cache
         greens = self.decompose_greens()
-        print "getting x polyterms"
         self.polytermx_cache = []
         for (pp,hs,xi) in [self.poly_term_w_xi(t) for t in greens]:
             self.polytermx_cache += [(pp.full_simplify(), hs, xi)]
 
-        print "ok, got x polyterms"
         return self.polytermx_cache
 
     def get_pp_regions(self):
+        """
+        Returns a list of dictionaries that correspond to the polynomial regions
+        of the spline. Each dictionary has the form
+            {
+               'polynomial': Symbolic polynomial for this region,
+               'center': a vector that specifies the center of this region,
+               'polyhedron': A polyhedron object that specifies the actual
+                   hyper-volume of the region.
+            }
+        """
         if self.cached_regions:
             return self.cached_regions
 
         # Get auxilary info
         regions = self.get_regions()
         greens = self.decompose_greens()
-        differential = self.get_differece_operator()
+        differential = self.get_difference_operator()
         polyterms = self.get_polyterms_w_xform()
+
         # Compute all the polynomials in each region
         summary = []
 
-
+        # Stack all the transforms for each region
         stack_xi = polyterms[0][2]
         for (pp, hs, xi) in polyterms[1:]:
             stack_xi = stack_xi.stack(xi)
 
+        # We can easily use that to quickly evaluate xi now
+
         for idx, polyhedron in enumerate(regions):
             c = polyhedron.center().n()
 
-
             # Compute the pp form of the polynomial
             PP = 0
-            print "doing region %d/%d " % (idx, len(regions))
             for jdx, (pos, val) in enumerate(differential):
                 posr = vector(pos).n()
                 bpp = 0
@@ -513,9 +598,7 @@ class BoxSpline:
                         continue
                     pp, _, _ = polyterms[idx]
                     bpp += pp.subs({self.x_[i]:  self.x_[i] - pos[i] for i,_ in enumerate(pos)})
-
                 PP += val*bpp
-            print "Okay!"
 
             summary.append({
                     'polynomial': PP,
@@ -525,16 +608,27 @@ class BoxSpline:
         self.cached_regions = summary[:]
         return summary
 
-    def recursive_evaluation(self, pt, X):
-        pass
-
     def stable_eval(self, pt):
+        """
+        This method evaluates a box spline for a given point. This uses a binary
+        search over the planes to deduce what region a point is in (on a knot
+        plane it arbitrarily makes a decision), then the convolution sum is
+        performed over that region.
+
+        Ex:
+        bs = BoxSpline([(1,0), (0,1), (1,1), (1,-1)], False)
+        bs.stable_eval((0,1))
+
+
+        This is a method not found in the paper, and it isn't super fast, but
+        is still useful at times.
+        """
 
         if not self.get_polyhedron().interior_contains(pt):
             return 0
 
         pt = vector(pt)
-        planes = self.get_grouped_planes_for_eval()
+        planes = self._get_grouped_planes_for_eval()
 
         planes_for_polyhedron = []
         planes_to_split = []
@@ -577,7 +671,7 @@ class BoxSpline:
             if poly is None:
                 poly = _
 
-        differential = self.get_differece_operator()
+        differential = self.get_difference_operator()
 
         c = poly.center()
         PP = 0
@@ -589,131 +683,3 @@ class BoxSpline:
                     bpp += pp.subs({self.x_[i]:  pt[i] - pos[i] for i,_ in enumerate(pos)})
             PP += val*bpp
         return PP
-
-
-    def get_pp_region_for_pt(self, pt):
-
-            if pt not in self.get_polyhedron():
-                return 0
-
-            global plist
-            global poly
-            plist = []
-            #print "gg"
-            L = self.get_grouped_planes_for_eval()
-            #print "gotem"
-            pp_num = 0
-            poly = None
-            planes = {}
-
-            def _is_dead_plane(n,d):
-                global plist
-                ieqns = [ [-d] + list(n) ] + [[-d] + list(p) for (p,d) in plist]
-                return len(Polyhedron(ieqs=ieqns).equations()) > 0
-
-            def _add_plane(poly, n, d):
-                if poly is None:
-                    return Polyhedron(ieqs=[[-d] + list(n)])
-                pprime = Polyhedron(ieqs=list(poly.Hrepresentation()) + [[-d] + list(n)])
-                if len(pprime.equations()) > 0:
-                    return poly
-                return pprime
-
-            def _append_plane(n,d):
-                hash = tuple(n)
-                nhash = tuple(-vector(n))
-
-                if nhash in planes and -d in planes[nhash]:
-                    return
-                if hash in planes:
-                    if d not in planes[hash]:
-                        planes[hash].append(d)
-                else:
-                    planes[hash] = [d]
-
-            def _recursive_eval(L, x, depth = 0):
-                global pp_num
-                global plane_list
-                global plist
-                global poly
-                if depth == 0:
-                    pp_num = 0
-
-                if len(L) == 0:
-                    #print "hit depth %d: %d" % (depth, pp_num)
-                    pp_num += 1
-                    return
-
-                p, D = L[0]
-                mid = len(D)//2
-
-                D_A = D[0:mid]
-                D_B = D[mid+1:]
-                d = D[mid]
-
-                decision = vector(p).dot_product(x) - d
-                if decision <= 0:
-
-                    poly = _add_plane(poly, -vector(p), -d)
-
-                    Lnew = L[1:]
-                    if len(D_A) > 0:
-                        Lnew += [(p, D_A)]
-                    _recursive_eval(Lnew, x, depth+1)
-                else:
-                    poly = _add_plane(poly, vector(p), d)
-                    Lnew = L[1:]
-                    if len(D_B) > 0:
-                        Lnew += [(p, D_B)]
-                    _recursive_eval(Lnew, x, depth+1)
-            _recursive_eval(L, vector(pt))
-
-            c = poly.center()
-            # if is_degenerate(poly):
-            #    print poly, pt, c
-            #    print "BARF BARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARFBARF"
-
-            differential = self.get_differece_operator()
-            polyterms = self.get_polyterms_w_xform()
-
-            stack_xi = polyterms[0][2]
-            for (pp, hs, xi) in polyterms[1:]:
-                stack_xi = stack_xi.stack(xi)
-
-            PP = 0
-            for pos, val in differential:
-                bpp = 0
-                pts = stack_xi * (c-vector(pos)).n()
-
-                for idx, p in enumerate(grouper(self.s_, pts)):
-                    if any([x <= 0. for x in p]):
-                        continue
-                    pp, _, _ = polyterms[idx]
-                    bpp += pp.subs({self.x_[i]:  self.x_[i] - pos[i] for i,_ in enumerate(pos)})
-                PP += val*bpp
-            return PP
-
-
-def autocorr(bs, lattice_f=lambda _: True):
-    # Construct the auto correlation BS
-    autocorr = BoxSpline(bs.Xi_*2, bs.centered, None, bs.weight)
-
-    # Give us a frequency variable
-    w = vector([var("w_%d" % i) for i in xrange(bs.s_)])
-    alpha = vector([var("a_%d" % i) for i in xrange(bs.s_)])
-
-
-    bs_p = bs.get_polyhedron()
-    bs_v = matrix([vector(v) for v in bs_p.vertices()]).transpose()
-
-    autocorr_p = autocorr.get_polyhedron()
-    autocorr_v = matrix([vector(v) for v in autocorr_p.vertices()]).transpose()
-
-    def nint(v):
-        return sign(v)*ceil(abs(v))
-
-    lattice = [x for x in product(*[range(nint(min(list(autocorr_v)[i])), nint(max(list(autocorr_v)[i]))+1 ) for i in xrange(autocorr.s_)]) if ((vector(x) in autocorr_p) and lattice_f(x))]
-    stencil = [x for x in product(*[range(nint(min(list(bs_v)[i])), nint(max(list(bs_v)[i]))+1 ) for i in xrange(bs.s_)]) if vector(x) in bs_p]
-
-    auto_corr = [(pt, autocorr.stable_eval(pt)) for pt in lattice]
-    return [(vector(pt), v) for (pt,v) in auto_corr if v != 0]

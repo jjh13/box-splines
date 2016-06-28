@@ -5,27 +5,32 @@ Mostly, the helper functions in this file are to do with splitting polyhedral
 regions, but there are some hacky combinatorial functions, and some function
 definitions in here as well.
 
-
-
 """
-
+__author__ = "Joshua Horacsek"
 
 from sage.all_cmdline import *
 from itertools import product
 from sage.symbolic.function_factory import function_factory
 import sympy
 
-
-def _sgn_fn(self, x, parent=None, algorithm=None):
+"""
+Define some useful symbolic functions, namely a symbolic heaviside and sinc
+function.
+"""
+def _hside(self, x, parent=None, algorithm=None):
     return 0 if x < 0 else (1 if x > 0 else 1/2)
-H =  function_factory('H', 1, '\\text{H}', evalf_func=_sgn_fn)
-
+H =  function_factory('H', 1, '\\text{H}', evalf_func=_hside)
 sympy.sinc = sympy.Function("sinc")
 def _sinc_fn__(self, x, parent=None, algorithm=None):
     return 2*sin(x/2)/x if x != 0 else 1
-sinc = function_factory('sinc', 1, '\\text{sinc}', evalf_func=_sinc_fn__, conversions= {'mathematica':'sinc', 'sympy':'sinc'})
+sinc = function_factory('sinc', 1, '\\text{sinc}', evalf_func=_sinc_fn__,
+        conversions= {'mathematica':'sinc', 'sympy':'sinc'})
 
 def plane_hits_polyhedron(poly, n, d, s = 2):
+    """
+    Checks whether a plane intersects a polyhedron, it also discards
+    intersections at a vertex.
+    """
     n = vector(n)
     plane = Polyhedron(eqns=[[-d]+list(n)])
     return plane.intersection(poly).dimension() >= s - 1
@@ -82,6 +87,8 @@ def ncross_product(vectors):
     return tuple(rv)
 
 def is_same_plane(p1, p2, flip=True):
+    """
+    """
     p1 = list(p1)
     p2 = list(p2)
 
@@ -113,26 +120,3 @@ def lattice_sites_in(polyhedron, lattice_f = None):
         if vector(x) in polyhedron and lattice_f(x)
     ]
     return lattice
-
-def bcc_lattice_test(v):
-    x,y,z = list(v)
-    if z % 2:
-        if x%2==0 or y%2==0:
-            return False
-    else:
-        if x%2 or y%2:
-            return False
-    return True
-
-def fcc_lattice_test(v):
-    x,y,z = list(v)
-    xr = x % 2
-    yr = y % 2
-    zr = z % 2
-
-    index = xr | (yr  << 1) | (zr << 2)
-    lattice_lut = [0, -1, -1, 1, -1, 2, 3, -1]
-    return lattice_lut[index] != -1
-
-def filter_stencil(stencil, lattice_f = lambda _: True, rweight=1):
-    return [ (s,w*rweight) for (s, w) in stencil if lattice_f(s)]

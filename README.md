@@ -22,7 +22,8 @@ load('boxspline.sage')
 load('codegen.sage')
 ```
 
-Then, creating a box spline object is as simple as:
+Then, creating a box spline object is as simple as choosing the defining
+direction vectors:
 ```python
 # Create the courant element
 bs = BoxSpline([(1,0),(0,1),(1,1)])
