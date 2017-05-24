@@ -73,7 +73,7 @@ class BoxSpline:
             self.c_xi -= vector(shift)
 
         self.Xi_ = Xi[:]
-        self.kerXi_ = list(matrix(Xi).kernel().basis())
+        self.kerXi_ = list(matrix(SR,Xi).kernel().basis())
         self.weight = weight
 
         # Setup caches for each of these objects
@@ -226,15 +226,15 @@ class BoxSpline:
 
         This is mainly to be used internally by the class.
         """
-        K = matrix(self.kerXi_).transpose()
+        K = matrix(SR,self.kerXi_).transpose()
         N = []
 
         for i,_ in filter(lambda (i,z): z != 0, enumerate(zeros)):
             N.append(K[i])
 
-        C = matrix(N).transpose().kernel().basis()[:]
+        C = matrix(SR, N).transpose().kernel().basis()[:]
         lc = vector(C[0])
-        return matrix(self.kerXi_).transpose() * lc
+        return matrix(SR, self.kerXi_).transpose() * lc
 
     def decompose_term(self, gfd):
         """
@@ -297,7 +297,7 @@ class BoxSpline:
 
         gf = (self.weight, nu_alpha)
 
-        if self.n_ == self.s_:
+        if sum([1 if _ != 0 else 0 for _ in nu_alpha]) == self.s_:
             return [gf]
 
         # pick any vector from the kernel to simplify about
@@ -483,7 +483,7 @@ class BoxSpline:
             return H(v[i])
 
         itr = filter(lambda (s,m): m !=0, enumerate(w))
-        xi_sigma1 = matrix([self.Xi_[i] for i,_ in itr]).transpose().inverse()
+        xi_sigma1 = matrix(SR, [self.Xi_[i] for i,_ in itr]).transpose().inverse()
 
         transform = coeffecient * prod([make_term(i,m) for i,(s,m) in enumerate(itr)], 1)*abs(xi_sigma1.det())
         heavy = prod([make_heavy(i) for i,(s,m) in enumerate(itr)], 1)
@@ -511,7 +511,7 @@ class BoxSpline:
             return H(v[i])
 
         itr = filter(lambda (s,m): m !=0, enumerate(w))
-        xi_sigma1 = matrix([self.Xi_[i] for i,_ in itr]).transpose().inverse()
+        xi_sigma1 = matrix(SR, [self.Xi_[i] for i,_ in itr]).transpose().inverse()
 
         transform = coeffecient * prod([make_term(i,m) for i,(s,m) in enumerate(itr)], 1)*abs(xi_sigma1.det())
         heavy = prod([make_heavy(i) for i,(s,m) in enumerate(itr)], 1)
