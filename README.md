@@ -8,6 +8,11 @@ of any box  spline (see ``boxspline.sage``) and will also will the binary tree
 representation of said spline (see ``codegen.sage``, there's also code in
 that file to export the tree to a C function).
 
+There is also a stand-alone [CoCalc](https://cocalc.com/) worksheet included in 
+the repository. If you want to test out this work without committing to a full
+Sage installation, you can create a free [CoCalc](https://cocalc.com/) account,
+then upload the worksheet ```cocalc-worksheet.sagews''' to your account.
+
 ## Dependencies
 - SageMath 6.8 (or above, the initial code was written in Sage 6.8, but has been
     working on 7.2) on an Ubuntu machine, this can be installed by following the
