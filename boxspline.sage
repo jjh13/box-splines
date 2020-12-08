@@ -30,14 +30,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 __author__ = "Joshua Horacsek"
 
 from sage.all import *
-from itertools import product, combinations, chain, izip_longest
+from itertools import product, combinations, chain
 from operator import mul
 import logging, sys
 
 load("./helpers.sage")
 
 class BoxSpline:
-    def __init__(self, Xi, centered=True, shift = None, weight=1):
+    def __init__(self, Xi, centered=True, shift = None, weight=1,verbose=False):
         """
         Sets the default parameters for a box spline.
 
@@ -55,6 +55,8 @@ class BoxSpline:
 
         weight -- This scales the internal polynomials so that the output values
             are scaled by this factor.
+            
+        verbose -- Print status messages as the decomposition proceeds
 
         """
         # Get simple parameters for the box spline
@@ -62,8 +64,8 @@ class BoxSpline:
         self.n_ = len(Xi)
 
         # Define the fourier and spatial variables for this BS
-        self.w_ = [var('w_%d' % i) for i in xrange(self.n_)]
-        self.x_ = [var('x_%d' % i) for i in xrange(self.s_)]
+        self.w_ = [var('w_%d' % i) for i in range(self.n_)]
+        self.x_ = [var('x_%d' % i) for i in range(self.s_)]
 
         factor = 0 if not centered else 1
         self.c_xi = factor * sum([vector(x) for x in Xi])/2
@@ -85,6 +87,11 @@ class BoxSpline:
         self.polyterm_cache = None
         self.polytermx_cache = None
         self.gt_cache = None
+        self._verbose = verbose
+        
+    def log(self, message):
+        if self._verbose:
+            print(message)
 
     def warmup(self):
         """
@@ -115,7 +122,7 @@ class BoxSpline:
         variables w_0, w_1, ... w_n. Where n is the dimension of the input
         space.
         """
-        w = vector([var('w_%d' % i) for i in xrange(self.s_)])
+        w = vector([var('w_%d' % i) for i in range(self.s_)])
         phi = prod([
                     (1 - exp(-I* w.dot_product(vector(xi))))/(I*w.dot_product(vector(xi)))
                     for xi in self.Xi_
@@ -136,7 +143,7 @@ class BoxSpline:
                 which is not part of sage. This is nice if you want to
                 numerically evaluate these functions.
         """
-        w = vector([var('w_%d' % i) for i in xrange(self.s_)])
+        w = vector([var('w_%d' % i) for i in range(self.s_)])
         if use_sinc:
             phi = prod([
                 w.dot_product(vector(xi))
@@ -158,7 +165,7 @@ class BoxSpline:
             return self.polyhedron_cache
 
         diff = self.get_difference_operator()
-        self.polyhedron_cache = Polyhedron(vertices=list(set([tuple(v) for v,_ in diff])))
+        self.polyhedron_cache = Polyhedron(vertices=list(set([tuple(v) for v,_ in diff])), base_ring=RDF)
         return self.polyhedron_cache
 
     def get_difference_operator(self):
@@ -209,10 +216,12 @@ class BoxSpline:
 
         (coeffecient, w) = gfunc
         i = isolate
-        old_v = len(filter(lambda x: x!=0, w))
+        olv_v = len([x for x in w if x != 0])
+#         old_v = len(filter(lambda x: x!=0, w))
         new_terms = []
 
-        for k, v_k in filter(lambda (kk, v_kk): v_kk != 0 and kk != i, enumerate(v)):
+#         for k, v_k in filter(lambda kk, v_kk: v_kk != 0 and kk != i, enumerate(v)):
+        for k, v_k in [(kk, v_kk) for kk, v_kk in enumerate(v) if v_kk != 0 and kk != i]:
             w_prime = w[:]
             w_prime[k] -= 1
             w_prime[i] += 1
@@ -229,7 +238,7 @@ class BoxSpline:
         K = matrix(SR,self.kerXi_).transpose()
         N = []
 
-        for i,_ in filter(lambda (i,z): z != 0, enumerate(zeros)):
+        for i,_ in filter(lambda i,z: z != 0, enumerate(zeros)):
             N.append(K[i])
 
         C = matrix(SR, N).transpose().kernel().basis()[:]
@@ -246,7 +255,8 @@ class BoxSpline:
         This is mainly to be used internally by the class.
         """
         (coeff, w) = gfd
-        if len(filter(lambda x: x != 0, w)) == self.s_:
+        if len([x for x in w if x != 0]) == self.s_:
+#        if len(filter(lambda x: x != 0, w)) == self.s_:
             return [(gfd)]
 
         # These are the terms that MUST be zero
@@ -254,8 +264,8 @@ class BoxSpline:
         simp = self.search_nullspace(constraint)
 
         # find any appropriate term to simplify
-        sterm = filter(lambda (i,v): v != 0, enumerate(simp))[0][0]
-
+#         sterm = filter(lambda i,v: v != 0, enumerate(simp))[0][0]
+        sterm = [i for i,v in enumerate(simp) if v != 0][0]
         decomposition = []
         for term in  self.simplify_and_split_from_ker(simp, sterm, gfd):
             decomposition += self.decompose_term(term)
@@ -310,7 +320,7 @@ class BoxSpline:
 
 
         # pick a non zero term in that vector
-        term = filter(lambda (i,v): v != 0, enumerate(simp))[0][0]
+        term = [i for i,v in enumerate(simp) if v != 0][0]
 
         # recursively decompose terms
         final = []
@@ -342,7 +352,9 @@ class BoxSpline:
         if self.s_ == 1:
             H = list(set(self.Xi_))
         else:
-            H = filter(lambda x: len(filter(lambda y: y != 0, x)) > 0, set([ncross_product(nt) for nt in combinations(set(self.Xi_), self.s_ - 1)]))
+            tmp = set([ncross_product(nt) for nt in combinations(set(self.Xi_), self.s_ - 1)])
+#             H = filter(lambda x: len([y for y in x if y != 0]) > 0, tmp)
+            H = [x for x in tmp if len([y for y in x if y != 0]) > 0]
         H = [vector(v).normalized() for v in H]
         #
         Hprime = []
@@ -422,6 +434,8 @@ class BoxSpline:
         result = []
 
         B,A = split_polyhedron(P, p, d)
+        print(B)
+        print(A)
 
         # Left
         if A is not None:
@@ -463,7 +477,9 @@ class BoxSpline:
         differential = self.get_difference_operator()
         Hprime, _ = self.calc_knotplanes()
         L = self._group_planes(set([(d, tuple(a)) for (d,a) in Hprime]))
-        poly = Polyhedron(vertices = map(lambda (x,y): list(x), differential))
+        poly = Polyhedron(vertices = map(lambda x: list(x[0]), differential), base_ring=RDF)
+        print(L)
+        print([vector(_) for _ in poly.vertices()])
         return self._recursive_split(L, poly)
 
 
@@ -476,13 +492,14 @@ class BoxSpline:
         i.e. it returns a tuple of (polynomial, heaviside expression)
         """
         (coeffecient, w) = term
-        v = [var('v_%d' % i) for i in xrange(self.s_)]
+        v = [var('v_%d' % i) for i in range(self.s_)]
         def make_term(i, k):
             return v[i]**(k-1)/factorial(k-1)
         def make_heavy(i):
             return H(v[i])
 
-        itr = filter(lambda (s,m): m !=0, enumerate(w))
+#         itr = filter(lambda s,m: m !=0, enumerate(w))
+        itr = [(s,m) for s,m in enumerate(w) if m != 0]
         xi_sigma1 = matrix(SR, [self.Xi_[i] for i,_ in itr]).transpose().inverse()
 
         transform = coeffecient * prod([make_term(i,m) for i,(s,m) in enumerate(itr)], 1)*abs(xi_sigma1.det())
@@ -504,13 +521,14 @@ class BoxSpline:
         where Xi is the transform for the heaviside expression.
         """
         (coeffecient, w) = term
-        v = [var('v_%d' % i) for i in xrange(self.s_)]
+        v = [var('v_%d' % i) for i in range(self.s_)]
         def make_term(i, k):
             return v[i]**(k-1)/factorial(k-1)
         def make_heavy(i):
             return H(v[i])
 
-        itr = filter(lambda (s,m): m !=0, enumerate(w))
+#         itr = filter(lambda s,m: m !=0, enumerate(w))
+        itr = [(s,m) for s,m in enumerate(w) if m != 0]
         xi_sigma1 = matrix(SR, [self.Xi_[i] for i,_ in itr]).transpose().inverse()
 
         transform = coeffecient * prod([make_term(i,m) for i,(s,m) in enumerate(itr)], 1)*abs(xi_sigma1.det())
@@ -607,7 +625,28 @@ class BoxSpline:
                 })
         self.cached_regions = summary[:]
         return summary
+    
+    def evaluate(self,pt):
+        """
+        A simple evaluation function that takes the input point,
+        checks which mesh-region it belongs to, then evaluates
+        the polynomial within the region.
+        
+        
+        """
+        pt = vector(pt)
+        preg = self.get_pp_regions()
+        poly = self.get_polyhedron()
+        pt = vector(pt)
 
+        if pt not in poly:
+            return 0
+
+        for region in preg:
+            if vector(pt) in region['polyhedron']:
+                return region['polynomial'].subs({x:v for (x,v) in zip(bs.x_, pt)})
+        return 0
+    
     def stable_eval(self, pt):
         """
         This method evaluates a box spline for a given point. This uses a binary
@@ -623,15 +662,18 @@ class BoxSpline:
         This is a method not found in the paper, and it isn't super fast, but
         is still useful at times.
         """
+#         print("here")
 
         if not self.get_polyhedron().interior_contains(pt):
             return 0
+#         print("there")
 
         pt = vector(pt)
         planes = self._get_grouped_planes_for_eval()
 
         planes_for_polyhedron = []
         planes_to_split = []
+#         print("mere")
 
         for n, dlist in planes:
             n = vector(n)
@@ -662,9 +704,14 @@ class BoxSpline:
             if not on_plane:
                 planes_for_polyhedron += [[-dlist[region_idx[0]]] + list(n)]
                 planes_for_polyhedron += [[ dlist[region_idx[1]]] + list(-n)]
+#         print("sss")
 
         #build ieqns for polyhedron
-        poly = Polyhedron(ieqs=planes_for_polyhedron)
+#         print(planes_for_polyhedron)
+        poly = Polyhedron(ieqs=planes_for_polyhedron, base_ring=RDF)
+#         print("here")
+        
+#         print(poly)
 
         for n,d in planes_to_split:
             poly, _ = split_polyhedron(poly, n, d)

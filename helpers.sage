@@ -27,7 +27,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 __author__ = "Joshua Horacsek"
 
 from sage.all_cmdline import *
-from itertools import product
+from itertools import product,zip_longest
 from sage.symbolic.function_factory import function_factory
 import sympy
 
@@ -43,6 +43,10 @@ def _sinc_fn__(self, x, parent=None, algorithm=None):
     return 2*sin(x/2)/x if x != 0 else 1
 sinc = function_factory('sinc', 1, '\\text{sinc}', evalf_func=_sinc_fn__,
         conversions= {'mathematica':'sinc', 'sympy':'sinc'})
+
+def grouper(n, iterable, fillvalue=None):
+    args = [iter(iterable)] * n
+    return zip_longest(*args, fillvalue=fillvalue)
 
 def plane_hits_polyhedron(poly, n, d, s = 2):
     """
@@ -72,20 +76,29 @@ def split_polyhedron(P, plane, d):
     and returns two polyhedra A, B -- one of which may be None.
     """
     plane = vector(plane)
-    left = [list(x) for x in P.Hrepresentation()] + [[-d] + list(plane)]
-    right = [list(x) for x in P.Hrepresentation()] + [[d] + list(-plane)]
+    
+    L = Polyhedron(ieqs=[[-d] + list(plane)], base_ring=RDF)
+    R = Polyhedron(ieqs=[[d] + list(-plane)], base_ring=RDF)
+#     left = [list(x) for x in P.Hrepresentation()] + [[-d] + list(plane)]
+#     right = [list(x) for x in P.Hrepresentation()] + [[d] + list(-plane)]
 
     try:
-        P_l = Polyhedron(ieqs=left)
-        if(is_degenerate(P_l)):
+        P_l = P.intersection(L)
+        if P_l.dim() < P.dim():
             P_l = None
+#         P_l = Polyhedron(ieqs=left, base_ring=RDF)
+#         if(is_degenerate(P_l)):
+#             P_l = None
     except: # This is a lazy way to catch degenerate polytopes
         P_l = None
 
     try:
-        P_r = Polyhedron(ieqs=right)
-        if(is_degenerate(P_r)):
+        P_r = P.intersection(R)
+        if P_r.dim() < P.dim():
             P_r = None
+#         P_r = Polyhedron(ieqs=right)
+#         if(is_degenerate(P_r)):
+#             P_r = None
     except:
         P_r = None
     return (P_l, P_r)
@@ -100,7 +113,7 @@ def ncross_product(vectors):
     if len(vectors) != dim - 1:
         return None
     rv = [0]*dim
-    for i in xrange(dim):
+    for i in range(dim):
         v = [0]*dim
         v[i] = 1
         rv[i] = matrix(vectors + [v]).det()
