@@ -61,6 +61,13 @@ to a text object via ``export_code``
 c_code = pt.export_code()
 print(c_code)
 ```
+If you want the PP form of the box spline, call the method ```bs.get_pp_regions()``` 
+this will return a list of said regions.
+```python
+for region in bs.get_pp_regions():
+    print(region['polyhedron']) # The s-dimensional polyhedron this region occupies 
+    print(region['polynomial']) # The s-variate polynomial associated with the region
+```
 
 I typically start an interactive Jupyter notebook session
 ``sage --notebook=jupyter``
