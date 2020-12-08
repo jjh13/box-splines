@@ -7,7 +7,7 @@ splines via the PP-form". It's where the actual set decomposition code is,
 conveniently supplied in a ``nice'' BoxSpline class. See the README for
 a few quick examples on how to use this class.
 
-Copyright © 2016 Joshua Horacsek
+Copyright © 2016, 2020 Joshua Horacsek
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -217,10 +217,8 @@ class BoxSpline:
         (coeffecient, w) = gfunc
         i = isolate
         olv_v = len([x for x in w if x != 0])
-#         old_v = len(filter(lambda x: x!=0, w))
         new_terms = []
 
-#         for k, v_k in filter(lambda kk, v_kk: v_kk != 0 and kk != i, enumerate(v)):
         for k, v_k in [(kk, v_kk) for kk, v_kk in enumerate(v) if v_kk != 0 and kk != i]:
             w_prime = w[:]
             w_prime[k] -= 1
@@ -256,7 +254,6 @@ class BoxSpline:
         """
         (coeff, w) = gfd
         if len([x for x in w if x != 0]) == self.s_:
-#        if len(filter(lambda x: x != 0, w)) == self.s_:
             return [(gfd)]
 
         # These are the terms that MUST be zero
@@ -264,7 +261,6 @@ class BoxSpline:
         simp = self.search_nullspace(constraint)
 
         # find any appropriate term to simplify
-#         sterm = filter(lambda i,v: v != 0, enumerate(simp))[0][0]
         sterm = [i for i,v in enumerate(simp) if v != 0][0]
         decomposition = []
         for term in  self.simplify_and_split_from_ker(simp, sterm, gfd):
@@ -353,7 +349,6 @@ class BoxSpline:
             H = list(set(self.Xi_))
         else:
             tmp = set([ncross_product(nt) for nt in combinations(set(self.Xi_), self.s_ - 1)])
-#             H = filter(lambda x: len([y for y in x if y != 0]) > 0, tmp)
             H = [x for x in tmp if len([y for y in x if y != 0]) > 0]
         H = [vector(v).normalized() for v in H]
         #
@@ -434,8 +429,6 @@ class BoxSpline:
         result = []
 
         B,A = split_polyhedron(P, p, d)
-        print(B)
-        print(A)
 
         # Left
         if A is not None:
@@ -478,8 +471,6 @@ class BoxSpline:
         Hprime, _ = self.calc_knotplanes()
         L = self._group_planes(set([(d, tuple(a)) for (d,a) in Hprime]))
         poly = Polyhedron(vertices = map(lambda x: list(x[0]), differential), base_ring=RDF)
-        print(L)
-        print([vector(_) for _ in poly.vertices()])
         return self._recursive_split(L, poly)
 
 
@@ -498,7 +489,6 @@ class BoxSpline:
         def make_heavy(i):
             return H(v[i])
 
-#         itr = filter(lambda s,m: m !=0, enumerate(w))
         itr = [(s,m) for s,m in enumerate(w) if m != 0]
         xi_sigma1 = matrix(SR, [self.Xi_[i] for i,_ in itr]).transpose().inverse()
 
@@ -527,7 +517,6 @@ class BoxSpline:
         def make_heavy(i):
             return H(v[i])
 
-#         itr = filter(lambda s,m: m !=0, enumerate(w))
         itr = [(s,m) for s,m in enumerate(w) if m != 0]
         xi_sigma1 = matrix(SR, [self.Xi_[i] for i,_ in itr]).transpose().inverse()
 
@@ -662,18 +651,15 @@ class BoxSpline:
         This is a method not found in the paper, and it isn't super fast, but
         is still useful at times.
         """
-#         print("here")
 
         if not self.get_polyhedron().interior_contains(pt):
             return 0
-#         print("there")
 
         pt = vector(pt)
         planes = self._get_grouped_planes_for_eval()
 
         planes_for_polyhedron = []
         planes_to_split = []
-#         print("mere")
 
         for n, dlist in planes:
             n = vector(n)
@@ -704,15 +690,8 @@ class BoxSpline:
             if not on_plane:
                 planes_for_polyhedron += [[-dlist[region_idx[0]]] + list(n)]
                 planes_for_polyhedron += [[ dlist[region_idx[1]]] + list(-n)]
-#         print("sss")
 
-        #build ieqns for polyhedron
-#         print(planes_for_polyhedron)
         poly = Polyhedron(ieqs=planes_for_polyhedron, base_ring=RDF)
-#         print("here")
-        
-#         print(poly)
-
         for n,d in planes_to_split:
             poly, _ = split_polyhedron(poly, n, d)
             if poly is None:

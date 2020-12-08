@@ -5,7 +5,7 @@ Mostly, the helper functions in this file are to do with splitting polyhedral
 regions, but there are some hacky combinatorial functions, and some function
 definitions in here as well.
 
-Copyright © 2016 Joshua Horacsek
+Copyright © 2016, 2020 Joshua Horacsek
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in

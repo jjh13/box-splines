@@ -296,22 +296,33 @@ class PolyTree(object):
             )
             return code
 
-    def export_code(self, name = "box_spline"):
+
+    def export_code(self, name = "box_spline", lang="C"):
         """
         Generates C code for the current tree object. Returns a string with
         a C function named ``name'' (by default this is named box_spline).
         """
+        assert lang=="C" or lang=="C++", "language must be C or C++"
+
         self.pieces = []
         self.id_counter = 0
 
         pieces = []
 
         tree_code = self._recurse_code(self.root, 1)
-        tree_code = "static double %s(%s) {\n%s\n    return 0;\n}\n" %  (
-            name,
-            ', '.join(['const %s &%s'% ('double', v) for v in self.bs.x_]),
-            tree_code
-        )
+        if lang == "C++":
+            tree_code = "static double %s(%s) {\n%s\n    return 0;\n}\n" %  (
+                name,
+                ', '.join(['const %s &%s'% ('double', v) for v in self.bs.x_]),
+                tree_code
+            )
+        else:
+            tree_code = "double %s(%s) {\n%s\n    return 0;\n}\n" %  (
+                name,
+                ', '.join(['%s %s'% ('double', v) for v in self.bs.x_]),
+                tree_code
+            )
+            
         for p in self.pieces:
             try:
                 if len(p[1].variables()) > 0:
@@ -326,8 +337,9 @@ class PolyTree(object):
         # Do some popro over the output, we should probably generate this more
         # cleanly....
         c_code = re.sub(r'^#include ".+$', r'', c_code, 0, re.MULTILINE)
-        c_code = re.sub(r'^double __pp', r'static inline double __pp', c_code, 0, re.MULTILINE)
-        c_code = re.sub(r'double h', r'const double &h', c_code, 0, re.MULTILINE)
-        c_code = re.sub(r'double x_([0-9]+)', r'const double &x_\1', c_code, 0, re.MULTILINE)
+        if lang == "C++":
+            c_code = re.sub(r'^double __pp', r'static inline double __pp', c_code, 0, re.MULTILINE)
+            c_code = re.sub(r'double h', r'const double &h', c_code, 0, re.MULTILINE)
+            c_code = re.sub(r'double x_([0-9]+)', r'const double &x_\1', c_code, 0, re.MULTILINE)
 
         return "%s\n%s" % (c_code, tree_code)
