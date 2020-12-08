@@ -282,7 +282,8 @@ class PolyTree(object):
 
             lhs = '+'.join([
                             '%s*%s' % (str(v), float(p)) for (v, p) in
-                                filter(lambda (x,y): y!=0, zip(self.bs.x_, plane))])
+                                
+                                [(x,y) for x,y in zip(self.bs.x_, plane) if y != 0] ])
             rhs = float(d)
             indent = depth * "    "
 

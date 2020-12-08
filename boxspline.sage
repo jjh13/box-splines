@@ -632,7 +632,7 @@ class BoxSpline:
         checks which mesh-region it belongs to, then evaluates
         the polynomial within the region.
         
-        
+        pt -- input vector 
         """
         pt = vector(pt)
         preg = self.get_pp_regions()

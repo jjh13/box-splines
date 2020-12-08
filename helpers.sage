@@ -54,7 +54,7 @@ def plane_hits_polyhedron(poly, n, d, s = 2):
     intersections at a vertex.
     """
     n = vector(n)
-    plane = Polyhedron(eqns=[[-d]+list(n)])
+    plane = Polyhedron(eqns=[[-d]+list(n)], base_ring=RDF)
     return plane.intersection(poly).dimension() >= s - 1
 
 def n_choose_rho(n, rho):
