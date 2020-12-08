@@ -187,7 +187,7 @@ static double hexagonal_1(const double &x_0, const double &x_1) {
     return 0;
 }
 ```
-This isn't the prettiest code, but it should work, and it should bequite fast on 
+This isn't the prettiest code, but it should work, and it should be quite fast on 
 modern CPUs.
 
 
