@@ -31,6 +31,13 @@ from itertools import product,zip_longest
 from sage.symbolic.function_factory import function_factory
 import sympy
 
+import six
+
+if six.PY2:
+    from itertools import izip_longest
+else:
+    from itertools import zip_longest
+
 """
 Define some useful symbolic functions, namely a symbolic heaviside and sinc
 function.
@@ -46,7 +53,10 @@ sinc = function_factory('sinc', 1, '\\text{sinc}', evalf_func=_sinc_fn__,
 
 def grouper(n, iterable, fillvalue=None):
     args = [iter(iterable)] * n
-    return zip_longest(*args, fillvalue=fillvalue)
+    if six.PY2:
+        return izip_longest(*args, fillvalue=fillvalue)
+    else:
+        return zip_longest(*args, fillvalue=fillvalue)
 
 def plane_hits_polyhedron(poly, n, d, s = 2):
     """
