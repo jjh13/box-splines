@@ -236,7 +236,7 @@ class BoxSpline:
         K = matrix(SR,self.kerXi_).transpose()
         N = []
 
-        for i,_ in filter(lambda i,z: z != 0, enumerate(zeros)):
+        for i,_ in [(i,z) for i,z in enumerate(zeros) if z != 0 ]: # filter(lambda i,z: z != 0, enumerate(zeros)):
             N.append(K[i])
 
         C = matrix(SR, N).transpose().kernel().basis()[:]
