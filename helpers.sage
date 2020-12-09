@@ -27,7 +27,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 __author__ = "Joshua Horacsek"
 
 from sage.all_cmdline import *
-from itertools import product,zip_longest
+from itertools import product
 from sage.symbolic.function_factory import function_factory
 import sympy
 
